@@ -15,20 +15,18 @@
 #include <mav_trajectory_generation_example/custom_planner.h>
 
 int main(int argc, char** argv) {
-
+  // Initialize ROS node
   ros::init(argc, argv, "custom_planner");
-
   ros::NodeHandle n;
+
   CustomPlanner planner(n);
+
   ROS_WARN_STREAM("SLEEPING FOR 5s TO WAIT FOR CLEAR CONSOLE");
   ros::Duration(5.0).sleep();
   ROS_WARN_STREAM("WARNING: CONSOLE INPUT/OUTPUT ONLY FOR DEMONSTRATION!");
 
-  // define set point
-  Eigen::Vector3d position, velocity;
-  position << 0.0, 1.0, 2.0;
-  velocity << 0.0, 0.0, 0.0;
 
+  // Define waypoints
   // THIS SHOULD NORMALLY RUN INSIDE ROS::SPIN!!! JUST FOR DEMO PURPOSES LIKE THIS.
   ROS_WARN_STREAM("PRESS ENTER TO UPDATE CURRENT POSITION AND SEND TRAJECTORY");
   std::cin.get();
@@ -45,17 +43,51 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  
+  // Manually 6D
+  // Eigen::VectorXd pose, twist;
+  // pose.resize(6);
+  // twist.resize(6);
+  // Eigen::Vector3d position, rotation_vec;
+  // Eigen::Matrix3d rotation_mat;
+  // Eigen::Vector3d unitx = Eigen::Vector3d::UnitX();
+  // Eigen::Vector3d unity = Eigen::Vector3d::UnitY();
+  // Eigen::Vector3d unitz = Eigen::Vector3d::UnitZ();
+  // Eigen::AngleAxisd test = Eigen::AngleAxisd(0.0, Eigen::Vector3d::UnitX());
+  // rotation_mat = Eigen::AngleAxisd(0.0, Eigen::Vector3d::UnitX())
+  //            * Eigen::AngleAxisd(M_PI / 2.0,  Eigen::Vector3d::UnitY())
+  //            * Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d::UnitZ());
+  // mav_msgs::vectorFromRotationMatrix(rotation_mat, &rotation_vec);
+  // ROS_INFO_STREAM("unitx: " << unitx);
+  // ROS_INFO_STREAM("unity: " << unity);
+  // ROS_INFO_STREAM("unitz: " << unitz);
+  // ROS_INFO_STREAM("rotation_vec: " << rotation_vec);
+  // ROS_INFO_STREAM("rotation_mat: " << rotation_mat);
+  // position << 0.0, 1.0, 2.0;
+  // pose << position, rotation_vec;
+  // twist << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+
+  //  Manually 4D
+  // Eigen::VectorXd pos_yaw, vel_yawrate;
+  // pos_yaw.resize(4);
+  // vel_yawrate.resize(4);
+  // pos_yaw << 0.0, 0.0, 2.0, M_PI;
+  // vel_yawrate << 0.0, 0.0, 0.0, 0.0;
+
+
+  // From file
   std::string wp_file_name;
   std::vector<Waypoint> waypoints;
-  planner.readWaypoints(args.at(1).c_str(), &waypoints);
+  planner.read4DWaypoints(args.at(1).c_str(), &waypoints);
 
 
+  // Plan trajectory and publish
   mav_trajectory_generation::Trajectory trajectory;
-  planner.planTrajectory(position, velocity, &trajectory);
+  planner.plan4DTrajectory(&waypoints, &trajectory);
+  // planner.planTrajectory(pos_yaw, vel_yawrate, &trajectory);
+  // planner.planTrajectory(pose, twist, &trajectory);
   planner.publishTrajectory(trajectory);
 
-  
+
   ROS_WARN_STREAM("DONE. GOODBYE.");
 
   return 0;

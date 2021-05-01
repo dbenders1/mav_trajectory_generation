@@ -7,6 +7,7 @@
 #include <Eigen/Dense>
 #include <nav_msgs/Odometry.h>
 #include <eigen_conversions/eigen_msg.h>
+// #include <mav_trajectory_generation/polynomial_optimization_linear.h>
 #include <mav_trajectory_generation/polynomial_optimization_nonlinear.h>
 #include <mav_trajectory_generation_ros/ros_visualization.h>
 #include <mav_trajectory_generation_ros/ros_conversions.h>
@@ -36,7 +37,10 @@ class CustomPlanner {
 
   // Reads waypoints from a text file
   // bool readWaypoints(std::string wp_file_name);
-  bool readWaypoints(std::string wp_file_name, std::vector<Waypoint>* waypoints);
+  bool read4DWaypoints(std::string wp_file_name, std::vector<Waypoint>* waypoints);
+
+  bool plan4DTrajectory(std::vector<Waypoint>* waypoints,
+                      mav_trajectory_generation::Trajectory* trajectory);
 
   // Plans a trajectory to take off from the current position and
   // fly to the given altitude (while maintaining x,y, and yaw).
