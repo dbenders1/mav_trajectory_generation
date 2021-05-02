@@ -88,9 +88,9 @@ bool CustomPlanner::read4DWaypoints(std::string wp_file_name, std::vector<Waypoi
   return 0;
 }
 
-// Plans a trajectory from the current position to all 4D waypoints (x,y,z,yaw) as defined in a txt file
+// Plans a trajectory from the current position to all 4D waypoints (x,y,z,yaw) as defined in a text file
 bool CustomPlanner::plan4DTrajectory(std::vector<Waypoint>* waypoints,
-    mav_trajectory_generation::Trajectory* trajectory) {
+                                     mav_trajectory_generation::Trajectory* trajectory) {
   // Initialization
   assert(trajectory);
   trajectory->clear();
@@ -104,19 +104,81 @@ bool CustomPlanner::plan4DTrajectory(std::vector<Waypoint>* waypoints,
           (Eigen::Quaterniond)current_pose_.rotation());
   start_vel << current_velocity_, 0.0;
 
-  // Define goal waypoint: define in waypoints list
-  // TODO only using index 14 for now
-  const uint8_t wp_idx = 13;
-  Eigen::Vector4d goal_wp, goal_vel;
-  goal_wp << (*waypoints)[wp_idx].position[0], (*waypoints)[wp_idx].position[1], (*waypoints)[wp_idx].position[2], (*waypoints)[wp_idx].yaw;
+  // Read waypoints, except for final waypoint (the goal)
+  const size_t n_wps = waypoints->size();
+  std::vector<Eigen::Vector4d> wps = std::vector<Eigen::Vector4d>(n_wps);
+  for (size_t wp_idx = 0; wp_idx < n_wps-1; ++wp_idx) {
+    wps[wp_idx] << (*waypoints)[wp_idx].position, (*waypoints)[wp_idx].yaw;
+  }
 
+  // Read goal waypoint
+  Eigen::Vector4d goal_wp, goal_vel;
+  goal_wp << (*waypoints)[n_wps].position, (*waypoints)[n_wps].yaw;
+  goal_vel << 0.0, 0.0, 0.0, 0.0;
 
   // Plan trajectory
-  success = planTrajectory(
-      goal_wp, goal_vel, start_wp, start_vel, max_v_, max_a_,
-      &(*trajectory));
+  success = plan4DTrajectory(start_wp, start_vel, &wps, goal_wp, goal_vel, max_v_, max_a_, &(*trajectory));
 
   return success;
+}
+
+bool CustomPlanner::plan4DTrajectory(const Eigen::Vector4d& start_wp,
+                                     const Eigen::Vector4d& start_vel,
+                                     std::vector<Eigen::Vector4d>* wps,
+                                     const Eigen::Vector4d& goal_wp,
+                                     const Eigen::Vector4d& goal_vel,
+                                     double v_max, double a_max,
+                                     mav_trajectory_generation::Trajectory* trajectory) {
+  // Check existence of trajectory
+  assert(trajectory);
+
+  // Create vertices
+  const int dimension = 4;
+  const int n_vertices = wps->size();
+  mav_trajectory_generation::Vertex::Vector vertices;
+  mav_trajectory_generation::Vertex start(dimension), end(dimension);
+  std::vector<mav_trajectory_generation::Vertex> wp_vertices(n_vertices, mav_trajectory_generation::Vertex(dimension));
+  for (size_t vertex_idx = 0; vertex_idx < n_vertices-1; ++vertex_idx) {
+    wp_vertices[vertex_idx].setDimension(dimension);
+    ROS_INFO_STREAM("Vertex " << vertex_idx << " dimension " << wp_vertices[vertex_idx].D());
+  }
+
+  // Add constraints to vertices
+  ROS_INFO_STREAM("Add constraints to vertices");
+  const int derivative_to_optimize = mav_trajectory_generation::derivative_order::SNAP;
+  
+  start.makeStartOrEnd(start_wp, derivative_to_optimize);
+  start.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, start_vel);
+  vertices.push_back(start);
+
+  for (size_t vertex_idx = 0; vertex_idx < n_vertices-1; ++vertex_idx) {
+    wp_vertices[vertex_idx].addConstraint(mav_trajectory_generation::derivative_order::POSITION, (*wps)[vertex_idx]);
+    vertices.push_back(wp_vertices[vertex_idx]);
+  }
+
+  end.makeStartOrEnd(goal_wp, derivative_to_optimize);
+  end.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, goal_vel);
+  vertices.push_back(end);
+
+  // Compute the segment times
+  std::vector<double> segment_times;
+  segment_times = estimateSegmentTimes(vertices, v_max, a_max);
+
+  // Create optimizer object and solve
+  const int N = 10;
+  mav_trajectory_generation::PolynomialOptimization<N> opt(dimension);
+  opt.setupFromVertices(vertices, segment_times, derivative_to_optimize);
+  ROS_INFO_STREAM("Start solving");
+  opt.solveLinear();
+  ROS_INFO_STREAM("End solving");
+
+  // Get trajectory as polynomial parameters
+  opt.getTrajectory(&(*trajectory));
+  ROS_INFO_STREAM("Obtained trajectory");
+  trajectory->scaleSegmentTimesToMeetConstraints(v_max, a_max);
+  ROS_INFO_STREAM("Scaled trajectory");
+
+  return true;
 }
 
 // Plans a trajectory from the current position to the a goal position and velocity
@@ -210,8 +272,8 @@ bool CustomPlanner::planTrajectory(const Eigen::VectorXd& goal_pos,
   start.makeStartOrEnd(start_pos, derivative_to_optimize);
 
   // Set start point's velocity to be constrained to current velocity
- start.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY,
-                     start_vel);
+  start.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY,
+                      start_vel);
 
   // Add waypoint to list
   vertices.push_back(start);
@@ -221,8 +283,8 @@ bool CustomPlanner::planTrajectory(const Eigen::VectorXd& goal_pos,
   end.makeStartOrEnd(goal_pos, derivative_to_optimize);
 
   // Set end point's velocity to be constrained to desired velocity
- end.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY,
-                   goal_vel);
+  end.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY,
+                    goal_vel);
 
   // Add waypoint to list
   vertices.push_back(end);
@@ -267,18 +329,27 @@ bool CustomPlanner::publishTrajectory(const mav_trajectory_generation::Trajector
       0.2; // distance by which to seperate additional markers. Set 0.0 to disable.
   std::string frame_id = "world";
 
-  mav_trajectory_generation::drawMavTrajectory(trajectory,
-                                               distance,
-                                               frame_id,
-                                               &markers);
-  pub_markers_.publish(markers);
+  // ROS_INFO_STREAM("Draw MAV trajectory");
+  // // TODO program gets stuck here
+  // mav_trajectory_generation::drawMavTrajectory(trajectory,
+  //                                              distance,
+  //                                              frame_id,
+  //                                              &markers);
+  // ROS_INFO_STREAM("Publish markers");
+  // pub_markers_.publish(markers);
+  // ROS_INFO_STREAM("Published trajectory");
 
   // Send trajectory to be executed on UAV
   mav_planning_msgs::PolynomialTrajectory4D msg;
+  ROS_INFO_STREAM("Construct trajectory message");
   mav_trajectory_generation::trajectoryToPolynomialTrajectoryMsg(trajectory,
                                                                  &msg);
+  ROS_INFO_STREAM("Constructed trajectory message");
+
   msg.header.frame_id = "world";
+  ROS_INFO_STREAM("Publish trajectory");
   pub_trajectory_.publish(msg);
+  ROS_INFO_STREAM("Published trajectory");
 
   return true;
 }

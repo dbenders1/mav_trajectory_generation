@@ -75,16 +75,18 @@ int main(int argc, char** argv) {
 
 
   // From file
-  std::string wp_file_name;
   std::vector<Waypoint> waypoints;
   planner.read4DWaypoints(args.at(1).c_str(), &waypoints);
 
 
-  // Plan trajectory and publish
+  // Plan trajectory
   mav_trajectory_generation::Trajectory trajectory;
   planner.plan4DTrajectory(&waypoints, &trajectory);
   // planner.planTrajectory(pos_yaw, vel_yawrate, &trajectory);
   // planner.planTrajectory(pose, twist, &trajectory);
+  ROS_INFO_STREAM("Amount of segments in trajectory: " << trajectory.K());
+
+  // Publish trajectory
   planner.publishTrajectory(trajectory);
 
 

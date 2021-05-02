@@ -40,7 +40,15 @@ class CustomPlanner {
   bool read4DWaypoints(std::string wp_file_name, std::vector<Waypoint>* waypoints);
 
   bool plan4DTrajectory(std::vector<Waypoint>* waypoints,
-                      mav_trajectory_generation::Trajectory* trajectory);
+                        mav_trajectory_generation::Trajectory* trajectory);
+
+  bool plan4DTrajectory(const Eigen::Vector4d& start_wp,
+                        const Eigen::Vector4d& start_vel,
+                        std::vector<Eigen::Vector4d>* wps,
+                        const Eigen::Vector4d& goal_wp,
+                        const Eigen::Vector4d& goal_vel,
+                        double v_max, double a_max,
+                        mav_trajectory_generation::Trajectory* trajectory);
 
   // Plans a trajectory to take off from the current position and
   // fly to the given altitude (while maintaining x,y, and yaw).

@@ -106,6 +106,11 @@ class Vertex {
   bool getSubdimension(const std::vector<size_t>& subdimensions,
                        int max_derivative_order, Vertex* subvertex) const;
 
+  bool setDimension(const int dimension) {
+    D_ = dimension;
+    return true;
+  }
+
  private:
   int D_;
   Constraints constraints_;
